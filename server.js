@@ -9,7 +9,13 @@ const io = new Server(server, {
     cors: { origin: '*' }
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files from the same directory (where index.html is)
+app.use(express.static(__dirname));
+
+// Also serve index.html for the root route
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // Game state
 const rooms = {};
