@@ -278,7 +278,7 @@
 
 <script>
 // ==================== SOCKET CONNECTION ====================
-const socket = io();
+const socket = io(window.location.origin);
 let myId = null;
 let roomCode = null;
 let gameStarted = false;
