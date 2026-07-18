@@ -616,7 +616,7 @@ const jumpForce = 8;
 const gravity = 25;
 
 function updateMovement(dt) {
-    if (localPlayer.isDead) return;
+    if (localPlayer.isDead || !gameStarted) return;
 
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
     forward.y = 0;
@@ -665,6 +665,129 @@ function updateMovement(dt) {
 }
 
 // ==================== SHOOTING ====================
+// Audio context for gun sounds
+let audioCtx = null;
+function getAudioContext() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return audioCtx;
+}
+
+function playGunshot(weaponType) {
+    try {
+        const ctx = getAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        if (weaponType === 'pistol') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(800, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.15);
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(2000, ctx.currentTime);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.15);
+        } else if (weaponType === 'shotgun') {
+            // Multiple oscillators for shotgun blast
+            for (let i = 0; i < 3; i++) {
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                const f = ctx.createBiquadFilter();
+                o.connect(f); f.connect(g); g.connect(ctx.destination);
+                o.type = 'sawtooth';
+                o.frequency.setValueAtTime(200 + Math.random() * 100, ctx.currentTime);
+                o.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.3);
+                g.gain.setValueAtTime(0.15, ctx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                f.type = 'lowpass';
+                f.frequency.setValueAtTime(1500, ctx.currentTime);
+                o.start(ctx.currentTime);
+                o.stop(ctx.currentTime + 0.3);
+            }
+            // Noise burst
+            const bufferSize = ctx.sampleRate * 0.3;
+            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+            }
+            const noise = ctx.createBufferSource();
+            const noiseGain = ctx.createGain();
+            noise.buffer = buffer;
+            noise.connect(noiseGain);
+            noiseGain.connect(ctx.destination);
+            noiseGain.gain.setValueAtTime(0.4, ctx.currentTime);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+            noise.start(ctx.currentTime);
+        } else if (weaponType === 'rifle') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(600, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.25, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(3000, ctx.currentTime);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.1);
+        } else if (weaponType === 'sniper') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(400, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.4);
+            gain.gain.setValueAtTime(0.35, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(2500, ctx.currentTime);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.4);
+        }
+    } catch (e) {
+        // Audio might be blocked until user interaction
+    }
+}
+
+function playReloadSound() {
+    try {
+        const ctx = getAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(200, ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 0.1);
+        osc.frequency.linearRampToValueAtTime(200, ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {}
+}
+
+function playHitSound() {
+    try {
+        const ctx = getAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(100, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.2);
+    } catch (e) {}
+}
+
 function shoot() {
     if (localPlayer.isDead || localPlayer.isReloading || localPlayer.ammo <= 0) return;
 
@@ -675,6 +798,9 @@ function shoot() {
     lastShot = now;
     localPlayer.ammo--;
     updateAmmoDisplay();
+
+    // Play gunshot sound
+    playGunshot(localPlayer.weapon);
 
     // Muzzle flash
     createMuzzleFlash();
@@ -748,6 +874,7 @@ function reload() {
 
     localPlayer.isReloading = true;
     document.getElementById('reloadIndicator').style.display = 'block';
+    playReloadSound();
     socket.emit('reload');
 }
 
@@ -961,6 +1088,8 @@ document.getElementById('joinRoomBtn').addEventListener('click', () => {
 });
 
 document.getElementById('startGameBtn').addEventListener('click', () => {
+    // Initialize audio context on user click (required by browsers)
+    getAudioContext();
     startGame();
 });
 
@@ -974,10 +1103,17 @@ function updatePlayerList() {
 
 function startGame() {
     gameStarted = true;
-    document.getElementById('lobby').style.display = 'none';
+    const lobby = document.getElementById('lobby');
+    lobby.style.display = 'none';
+    // Remove lobby from DOM to prevent it from blocking input
+    setTimeout(() => {
+        if (lobby.parentNode) lobby.parentNode.removeChild(lobby);
+    }, 100);
     document.getElementById('hud').style.display = 'block';
     showWeapon('pistol');
     updateAmmoDisplay();
+    // Initialize audio context on user interaction
+    getAudioContext();
     renderer.domElement.requestPointerLock();
 }
 
@@ -1052,6 +1188,7 @@ socket.on('playerShot', (data) => {
             if (hit.id === myId) {
                 localPlayer.health = hit.health;
                 updateHealthDisplay();
+                playHitSound();
 
                 // Damage indicator
                 const indicator = document.createElement('div');
